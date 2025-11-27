@@ -64,9 +64,9 @@ export function Sidebar({ currentPage, onPageChange, userRole, onLogout }: Sideb
         {/* Logo */}
         <div className="p-6 border-b border-indigo-800">
           <h1 className="text-2xl tracking-tight text-indigo-100">
-            Assos
+            AssoFi
           </h1>
-          <p className="text-sm text-indigo-300 mt-1">Gestion d'Association</p>
+          <p className="text-sm text-indigo-300 mt-1">Finances d'Association</p>
         </div>
 
         {/* User Info */}

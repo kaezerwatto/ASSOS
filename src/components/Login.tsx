@@ -79,9 +79,9 @@ export function Login({ onLogin }: LoginProps) {
             </div>
           </div>
           <div className="text-center">
-            <CardTitle className="text-3xl text-indigo-950">Assos</CardTitle>
+            <CardTitle className="text-3xl text-indigo-950">AssoFi</CardTitle>
             <CardDescription className="text-base mt-2">
-              Gestion d'Association
+              Gestion des Finances d'une Association
             </CardDescription>
           </div>
 
