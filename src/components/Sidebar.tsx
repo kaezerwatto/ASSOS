@@ -127,7 +127,7 @@ export function Sidebar({ currentPage, onPageChange, userRole, onLogout }: Sideb
         {/* Footer */}
         <div className="p-4 border-t border-indigo-800">
           <p className="text-xs text-indigo-300 text-center">
-            © 2025 Assos - Tous droits réservés
+            © 2025 AssoFi - Tous droits réservés
           </p>
         </div>
       </aside>

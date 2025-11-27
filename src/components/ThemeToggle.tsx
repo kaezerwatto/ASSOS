@@ -36,14 +36,16 @@ export function ThemeToggle() {
       >
         {theme === 'dark' ? (
           <Moon className="size-5 text-white" />
-        ) : (
+        ) : theme === 'light' ? (
           <Sun className="size-5 text-white" />
+        ) :(
+          <Monitor className="size-5 text-white" />
         )}
       </Button>
 
       {/* Fenêtre flottante */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 w-48 bg-white dark:bg-slate-900 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 p-2 animate-in fade-in-0 zoom-in-95">
+        <div className="absolute bottom-6 right-6 w-48 bg-white dark:bg-slate-900 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 p-2 animate-in fade-in-0 zoom-in-95">
           <div className="space-y-1">
             {themes.map((themeOption) => {
               const Icon = themeOption.icon;

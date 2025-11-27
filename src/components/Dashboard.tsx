@@ -81,7 +81,7 @@ export function Dashboard({ userRole }: DashboardProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-indigo-950 mb-2">Tableau de bord</h1>
+          <h1 className="text-slate-600 mb-2">Tableau de bord</h1>
           <p className="text-slate-600">Vue d'ensemble de votre association</p>
         </div>
         <div className="text-right">
@@ -285,8 +285,8 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Users className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Présences</p>
-                  <p className="text-xl text-slate-900">42/48</p>
+                  <p className="text-sm text-blue-900">Présences</p>
+                  <p className="text-xl text-blue-800">42/48</p>
                 </div>
               </div>
               <span className="text-sm text-blue-600">87.5%</span>
@@ -298,8 +298,8 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Coins className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Tontines traitées</p>
-                  <p className="text-xl text-slate-900">9</p>
+                  <p className="text-sm text-blue-900">Tontines traitées</p>
+                  <p className="text-xl text-blue-800">9</p>
                 </div>
               </div>
               <span className="text-sm text-purple-600">3 séances</span>
@@ -311,8 +311,8 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Heart className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Aides accordées</p>
-                  <p className="text-xl text-slate-900">12</p>
+                  <p className="text-sm text-blue-900">Aides accordées</p>
+                  <p className="text-xl text-blue-800">12</p>
                 </div>
               </div>
               <span className="text-sm text-emerald-600">1,850€</span>
@@ -324,8 +324,8 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <GraduationCap className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Prêts scolaires</p>
-                  <p className="text-xl text-slate-900">5</p>
+                  <p className="text-sm text-blue-900">Prêts scolaires</p>
+                  <p className="text-xl text-blue-800">5</p>
                 </div>
               </div>
               <span className="text-sm text-orange-600">3,200€</span>

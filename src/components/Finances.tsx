@@ -202,7 +202,7 @@ export function Finances({ userRole }: FinancesProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-indigo-950 mb-2">Gestion Financière</h1>
+          <h1 className="text-slate-600 mb-2">Gestion Financière</h1>
           <p className="text-slate-600">Vue complète des finances de l'association</p>
         </div>
         <div className="flex gap-2">

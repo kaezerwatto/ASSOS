@@ -562,12 +562,20 @@
     top: 50%;
   }
 
+  .bottom-6 {
+    bottom: calc(var(--spacing) * 6);
+  }
+
   .right-2 {
     right: calc(var(--spacing) * 2);
   }
 
   .right-4 {
     right: calc(var(--spacing) * 4);
+  }
+
+  .right-6 {
+    right: calc(var(--spacing) * 6);
   }
 
   .left-0 {
@@ -3184,7 +3192,7 @@ html {
   color: #a5b4fc; /* indigo-300 */
 }
 
-.dark .border-indigo-950 {
+.dark .text-indigo-950 {
   border-color: #818cf8; /* indigo-950 */
 }
 
