@@ -31,9 +31,8 @@ export function Sidebar({ currentPage, onPageChange, userRole, onLogout }: Sideb
     { id: 'members' as PageType, label: 'Membres', icon: Users },
     { id: 'sessions' as PageType, label: 'Séances', icon: CalendarDays },
     { id: 'tontines' as PageType, label: 'Tontines', icon: Coins },
-    { id: 'aids' as PageType, label: 'Aides', icon: Heart },
-    { id: 'loans' as PageType, label: 'Prêts Scolaires', icon: GraduationCap },
-    { id: 'donations' as PageType, label: 'Dons', icon: Gift },
+    { id: 'scolaire' as PageType, label: 'Caisse Scolaire', icon: GraduationCap },
+    { id: 'ordinaire' as PageType, label: 'Caisse Ordinaire', icon: Gift },
     { id: 'finances' as PageType, label: 'Finances', icon: Wallet },
   ];
 

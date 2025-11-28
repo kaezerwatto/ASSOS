@@ -7,14 +7,15 @@ import { Sessions } from './components/Sessions';
 import { Tontines } from './components/Tontines';
 import { Aids } from './components/Aids';
 import { Loans } from './components/Loans';
+import { CaisseScolaire } from './components/CaisseScolaire.tsx';
 import { Finances } from './components/Finances';
-import { Donations } from './components/Donations';
+import { CaisseOrdinaire } from './components/CaisseOrdinaire';
 import { Login } from './components/Login';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ThemeProvider } from 'next-themes';
 import { authService } from './lib/appwrite-service';
 
-export type PageType = 'dashboard' | 'members' | 'sessions' | 'tontines' | 'aids' | 'loans' | 'finances' | 'donations';
+export type PageType = 'dashboard' | 'members' | 'sessions' | 'tontines' | 'Scolaire'  | 'Ordinaire' | 'loans' | 'finances' | 'donations';
 export type UserRole = 'admin' | 'tresorier' | null;
 
 export default function App() {
@@ -57,10 +58,12 @@ export default function App() {
         return <Aids userRole={userRole} />;
       case 'loans':
         return <Loans userRole={userRole} />;
+      case 'scolaire':
+        return <CaisseScolaire userRole={userRole} />;
       case 'finances':
         return <Finances userRole={userRole} />;
-      case 'donations':
-        return <Donations userRole={userRole} />;
+      case 'ordinaire':
+        return <CaisseOrdinaire userRole={userRole} />;
       default:
         return <Dashboard userRole={userRole} />;
     }

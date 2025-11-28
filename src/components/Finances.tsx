@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,36 +9,56 @@ import { Badge } from './ui/badge';
 import { Plus, Wallet, TrendingUp, TrendingDown, DollarSign, Filter, Download } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { databaseService } from '../lib/appwrite-service';
 
-type TransactionType = 
-  | 'depot' 
-  | 'retrait' 
-  | 'tontine_maintenance' 
-  | 'aide_accordee' 
-  | 'aide_recouvree'
-  | 'pret_scolaire'
-  | 'interet_pret'
-  | 'don'
-  | 'seance_entretien'
-  | 'seance_repas'
-  | 'seance_boisson'
-  | 'depense_bureau'
-  | 'depense_statutaire';
+// Types basés sur les autres fichiers
+interface Seance {
+  $id: string;
+  date_seance: string;
+  lieu_seance: string;
+  heure_debut?: string;
+  type: 'inaugurale' | 'ordinaire' | 'extraordinaire';
+  nouvelles_membres?: string;
+  resolutions?: string;
+  $createdAt: string;
+}
+
+interface Membre {
+  $id: string;
+  nom: string;
+  prenoms: string;
+  date_inscription: string;
+  lieu_residence: string;
+  telephone: string;
+  email?: string;
+  photo?: string;
+  statut: 'actif(ve)' | 'suspendu(e)' | 'exclu(e)' | 'demissionnaire' | 'desactive(e)';
+  role: 'membre' | 'tresorier' | 'president' | 'commissaire_aux_comptes' | 'secretaire_general';
+}
 
 interface Transaction {
-  id: string;
-  type: TransactionType;
-  amount: number;
-  date: string;
+  $id: string;
+  seance_id: string;
+  membre_id?: string;
+  type: 'depot' | 'retrait' | 'tontine_maintenance' | 'aide_accordee' | 'aide_recouvree' | 'pret_scolaire' | 'interet_pret' | 'don' | 'seance_entretien' | 'seance_repas' | 'seance_boisson' | 'depense_bureau' | 'depense_statutaire';
+  montant: number;
+  date_transaction: string;
   description: string;
-  category: 'entree' | 'sortie';
   caisse: 'generale' | 'scolaire';
+  mode_paiement: 'espèces' | 'Mbway' | 'mixte';
+  $createdAt: string;
 }
 
 interface FinancesProps {
   userRole: 'admin' | 'tresorier';
 }
+
+// IDs de la base de données Appwrite
+const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || '69243fec00044331ef75';
+const SEANCES_COLLECTION = 'seances';
+const MEMBRES_COLLECTION = 'membres';
+const TRANSACTIONS_COLLECTION = 'transactions_finances';
 
 const transactionTypes = {
   depot: { label: 'Dépôt', category: 'entree' as const, caisse: 'generale' as const },
@@ -59,150 +79,240 @@ const transactionTypes = {
 export function Finances({ userRole }: FinancesProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [filterCaisse, setFilterCaisse] = useState<'all' | 'generale' | 'scolaire'>('all');
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    {
-      id: '1',
-      type: 'tontine_maintenance',
-      amount: 30,
-      date: '2025-11-15',
-      description: 'Frais de maintenance - 3 bénéficiaires',
-      category: 'entree',
-      caisse: 'generale',
-    },
-    {
-      id: '2',
-      type: 'seance_entretien',
-      amount: 25,
-      date: '2025-11-15',
-      description: 'Entretien salle - Séance du 15/11',
-      category: 'sortie',
-      caisse: 'generale',
-    },
-    {
-      id: '3',
-      type: 'don',
-      amount: 200,
-      date: '2025-11-08',
-      description: 'Don anonyme',
-      category: 'entree',
-      caisse: 'generale',
-    },
-    {
-      id: '4',
-      type: 'aide_accordee',
-      amount: 150,
-      date: '2025-11-15',
-      description: 'Aide maladie - Marie Dupont',
-      category: 'sortie',
-      caisse: 'generale',
-    },
-    {
-      id: '5',
-      type: 'pret_scolaire',
-      amount: 800,
-      date: '2025-11-10',
-      description: 'Prêt scolaire - Sophie Bernard',
-      category: 'sortie',
-      caisse: 'scolaire',
-    },
-    {
-      id: '6',
-      type: 'interet_pret',
-      amount: 60,
-      date: '2025-11-12',
-      description: 'Intérêts prêt - Pierre Durand',
-      category: 'entree',
-      caisse: 'scolaire',
-    },
-  ]);
+  const [seances, setSeances] = useState<Seance[]>([]);
+  const [membres, setMembres] = useState<Membre[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [formData, setFormData] = useState({
+    seance_id: '',
+    membre_id: '',
     type: '',
     amount: '',
-    date: '',
+    date_transaction: '',
     description: '',
+    mode_paiement: '',
   });
 
-  const handleAddTransaction = () => {
-    const typeInfo = transactionTypes[formData.type as TransactionType];
-    const newTransaction: Transaction = {
-      id: Date.now().toString(),
-      type: formData.type as TransactionType,
-      amount: parseFloat(formData.amount),
-      date: formData.date,
-      description: formData.description,
-      category: typeInfo.category,
-      caisse: typeInfo.caisse,
-    };
-    setTransactions([newTransaction, ...transactions]);
-    setFormData({ type: '', amount: '', date: '', description: '' });
-    setIsAddDialogOpen(false);
+  // Charger les données depuis Appwrite
+  useEffect(() => {
+    loadSeances();
+    loadMembres();
+    loadTransactions();
+  }, []);
+
+  const loadSeances = async () => {
+    try {
+      const response = await databaseService.listDocuments(DATABASE_ID, SEANCES_COLLECTION);
+      setSeances(response.documents as Seance[]);
+    } catch (error) {
+      console.error('Erreur lors du chargement des séances:', error);
+    }
+  };
+
+  const loadMembres = async () => {
+    try {
+      const response = await databaseService.listDocuments(DATABASE_ID, MEMBRES_COLLECTION);
+      setMembres(response.documents as Membre[]);
+    } catch (error) {
+      console.error('Erreur lors du chargement des membres:', error);
+    }
+  };
+
+  const loadTransactions = async () => {
+    try {
+      const response = await databaseService.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION);
+      setTransactions(response.documents as Transaction[]);
+    } catch (error) {
+      console.error('Erreur lors du chargement des transactions:', error);
+    }
+  };
+
+  const handleAddTransaction = async () => {
+    try {
+      const typeInfo = transactionTypes[formData.type as keyof typeof transactionTypes];
+      
+      const transactionData: any = {
+        seances: formData.seance_id,
+        type: formData.type,
+        montant: parseFloat(formData.amount),
+        date_transaction: formData.date_transaction,
+        description: formData.description,
+        caisse: typeInfo.caisse,
+        mode_paiement: formData.mode_paiement,
+      };
+
+      // Ajouter le membre si nécessaire
+      if (formData.membre_id) {
+        transactionData.membres = formData.membre_id;
+      }
+
+      await databaseService.createDocument(DATABASE_ID, TRANSACTIONS_COLLECTION, transactionData);
+      
+      setFormData({
+        seance_id: '',
+        membre_id: '',
+        type: '',
+        amount: '',
+        date_transaction: '',
+        description: '',
+        mode_paiement: '',
+      });
+      setIsAddDialogOpen(false);
+      loadTransactions();
+    } catch (error) {
+      console.error('Erreur lors de la création de la transaction:', error);
+    }
   };
 
   const filteredTransactions = filterCaisse === 'all' 
     ? transactions 
     : transactions.filter(t => t.caisse === filterCaisse);
 
+  // Calculs des statistiques
   const caisseGenerale = transactions
     .filter(t => t.caisse === 'generale')
     .reduce((sum, t) => {
-      return t.category === 'entree' ? sum + t.amount : sum - t.amount;
+      const typeInfo = transactionTypes[t.type as keyof typeof transactionTypes];
+      return typeInfo.category === 'entree' ? sum + t.montant : sum - t.montant;
     }, 0);
 
   const caisseScolaire = transactions
     .filter(t => t.caisse === 'scolaire')
     .reduce((sum, t) => {
-      return t.category === 'entree' ? sum + t.amount : sum - t.amount;
+      const typeInfo = transactionTypes[t.type as keyof typeof transactionTypes];
+      return typeInfo.category === 'entree' ? sum + t.montant : sum - t.montant;
     }, 0);
 
   const totalEntrees = transactions
-    .filter(t => t.category === 'entree')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter(t => {
+      const typeInfo = transactionTypes[t.type as keyof typeof transactionTypes];
+      return typeInfo.category === 'entree';
+    })
+    .reduce((sum, t) => sum + t.montant, 0);
 
   const totalSorties = transactions
-    .filter(t => t.category === 'sortie')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter(t => {
+      const typeInfo = transactionTypes[t.type as keyof typeof transactionTypes];
+      return typeInfo.category === 'sortie';
+    })
+    .reduce((sum, t) => sum + t.montant, 0);
 
-  // Chart data
-  const monthlyFlowData = [
-    { month: 'Jan', entrees: 4200, sorties: 3100 },
-    { month: 'Fev', entrees: 5100, sorties: 3600 },
-    { month: 'Mar', entrees: 4800, sorties: 3900 },
-    { month: 'Avr', entrees: 6200, sorties: 4200 },
-    { month: 'Mai', entrees: 5800, sorties: 3800 },
-    { month: 'Juin', entrees: 6500, sorties: 4100 },
-  ];
+  // Obtenir le nom d'un membre
+  const getMembreName = (membreId: string) => {
+    const membre = membres.find(m => m.$id === membreId);
+    return membre ? `${membre.prenoms} ${membre.nom}` : 'Non spécifié';
+  };
 
-  const balanceData = [
-    { month: 'Jan', generale: 8500, scolaire: 6200 },
-    { month: 'Fev', generale: 9400, scolaire: 6500 },
-    { month: 'Mar', generale: 10200, scolaire: 6800 },
-    { month: 'Avr', generale: 11100, scolaire: 7200 },
-    { month: 'Mai', generale: 11800, scolaire: 7800 },
-    { month: 'Juin', generale: 12450, scolaire: 8200 },
-  ];
+  // Obtenir les détails d'une séance
+  const getSeanceDetails = (seanceId: string) => {
+    return seances.find(s => s.$id === seanceId);
+  };
 
-  const expenseTypeData = [
-    { name: 'Aides', value: 1850, color: '#ef4444' },
-    { name: 'Prêts Scolaires', value: 3200, color: '#f59e0b' },
-    { name: 'Séances', value: 2100, color: '#06b6d4' },
-    { name: 'Bureau', value: 850, color: '#8b5cf6' },
-    { name: 'Statutaires', value: 600, color: '#ec4899' },
-  ];
+  // Données pour les graphiques (basées sur les transactions réelles)
+  const getMonthlyFlowData = () => {
+    const monthlyData: { [key: string]: { entrees: number; sorties: number } } = {};
+    
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date_transaction);
+      const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+      const monthLabel = date.toLocaleDateString('fr-FR', { month: 'short' });
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { entrees: 0, sorties: 0, month: monthLabel };
+      }
+      
+      const typeInfo = transactionTypes[transaction.type as keyof typeof transactionTypes];
+      if (typeInfo.category === 'entree') {
+        monthlyData[monthKey].entrees += transaction.montant;
+      } else {
+        monthlyData[monthKey].sorties += transaction.montant;
+      }
+    });
 
-  const revenueTypeData = [
-    { name: 'Tontines', value: 3500, color: '#8b5cf6' },
-    { name: 'Dons', value: 1200, color: '#ec4899' },
-    { name: 'Recouvrements', value: 1850, color: '#10b981' },
-    { name: 'Intérêts Prêts', value: 920, color: '#f59e0b' },
-  ];
+    return Object.values(monthlyData).slice(-6); // 6 derniers mois
+  };
+
+  const getBalanceData = () => {
+    const balanceData: { [key: string]: { generale: number; scolaire: number } } = {};
+    let generaleCumul = 0;
+    let scolaireCumul = 0;
+    
+    transactions
+      .sort((a, b) => new Date(a.date_transaction).getTime() - new Date(b.date_transaction).getTime())
+      .forEach(transaction => {
+        const date = new Date(transaction.date_transaction);
+        const monthKey = date.toLocaleDateString('fr-FR', { month: 'short' });
+        
+        const typeInfo = transactionTypes[transaction.type as keyof typeof transactionTypes];
+        const montant = typeInfo.category === 'entree' ? transaction.montant : -transaction.montant;
+        
+        if (transaction.caisse === 'generale') {
+          generaleCumul += montant;
+        } else {
+          scolaireCumul += montant;
+        }
+        
+        balanceData[monthKey] = { 
+          generale: generaleCumul, 
+          scolaire: scolaireCumul,
+          month: monthKey
+        };
+      });
+
+    return Object.values(balanceData).slice(-6);
+  };
+
+  const getExpenseTypeData = () => {
+    const expenseData: { [key: string]: number } = {};
+    
+    transactions.forEach(transaction => {
+      const typeInfo = transactionTypes[transaction.type as keyof typeof transactionTypes];
+      if (typeInfo.category === 'sortie') {
+        if (!expenseData[typeInfo.label]) {
+          expenseData[typeInfo.label] = 0;
+        }
+        expenseData[typeInfo.label] += transaction.montant;
+      }
+    });
+
+    return Object.entries(expenseData).map(([name, value], index) => ({
+      name,
+      value,
+      color: ['#ef4444', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899'][index] || '#6b7280'
+    }));
+  };
+
+  const getRevenueTypeData = () => {
+    const revenueData: { [key: string]: number } = {};
+    
+    transactions.forEach(transaction => {
+      const typeInfo = transactionTypes[transaction.type as keyof typeof transactionTypes];
+      if (typeInfo.category === 'entree') {
+        if (!revenueData[typeInfo.label]) {
+          revenueData[typeInfo.label] = 0;
+        }
+        revenueData[typeInfo.label] += transaction.montant;
+      }
+    });
+
+    return Object.entries(revenueData).map(([name, value], index) => ({
+      name,
+      value,
+      color: ['#8b5cf6', '#ec4899', '#10b981', '#f59e0b'][index] || '#6b7280'
+    }));
+  };
+
+  const monthlyFlowData = getMonthlyFlowData();
+  const balanceData = getBalanceData();
+  const expenseTypeData = getExpenseTypeData();
+  const revenueTypeData = getRevenueTypeData();
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-slate-600 mb-2">Gestion Financière</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Gestion Financière</h1>
           <p className="text-slate-600">Vue complète des finances de l'association</p>
         </div>
         <div className="flex gap-2">
@@ -227,10 +337,26 @@ export function Finances({ userRole }: FinancesProps) {
                   <Input
                     id="date"
                     type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    value={formData.date_transaction}
+                    onChange={(e) => setFormData({ ...formData, date_transaction: e.target.value })}
                     className="h-11"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seance" className="text-slate-700">Séance liée</Label>
+                  <Select value={formData.seance_id} onValueChange={(value) => setFormData({ ...formData, seance_id: value })}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Sélectionner une séance" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {seances.map((seance) => (
+                        <SelectItem key={seance.$id} value={seance.$id}>
+                          {new Date(seance.date_seance).toLocaleDateString('fr-FR')} - {seance.lieu_seance}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -249,6 +375,26 @@ export function Finances({ userRole }: FinancesProps) {
                   </Select>
                 </div>
 
+                {(formData.type === 'tontine_maintenance' || formData.type === 'aide_accordee' || 
+                  formData.type === 'aide_recouvree' || formData.type === 'pret_scolaire' || 
+                  formData.type === 'interet_pret') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="membre" className="text-slate-700">Membre concerné</Label>
+                    <Select value={formData.membre_id} onValueChange={(value) => setFormData({ ...formData, membre_id: value })}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Sélectionner un membre" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {membres.filter(m => m.statut === 'actif(ve)').map((membre) => (
+                          <SelectItem key={membre.$id} value={membre.$id}>
+                            {membre.prenoms} {membre.nom}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="amount" className="text-slate-700">Montant (€) *</Label>
                   <Input
@@ -259,6 +405,20 @@ export function Finances({ userRole }: FinancesProps) {
                     placeholder="100"
                     className="h-11"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mode_paiement" className="text-slate-700">Mode de paiement *</Label>
+                  <Select value={formData.mode_paiement} onValueChange={(value) => setFormData({ ...formData, mode_paiement: value })}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Mode de paiement" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="espèces">Espèce</SelectItem>
+                      <SelectItem value="Mbway">Mbway</SelectItem>
+                      <SelectItem value="mixte">Mixte</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -277,15 +437,15 @@ export function Finances({ userRole }: FinancesProps) {
                     <div className="grid grid-cols-2 gap-2 text-sm text-indigo-800">
                       <div>
                         <p className="text-indigo-600">Type</p>
-                        <p>{transactionTypes[formData.type as TransactionType].label}</p>
+                        <p>{transactionTypes[formData.type as keyof typeof transactionTypes].label}</p>
                       </div>
                       <div>
                         <p className="text-indigo-600">Catégorie</p>
-                        <p>{transactionTypes[formData.type as TransactionType].category === 'entree' ? 'Entrée' : 'Sortie'}</p>
+                        <p>{transactionTypes[formData.type as keyof typeof transactionTypes].category === 'entree' ? 'Entrée' : 'Sortie'}</p>
                       </div>
                       <div className="col-span-2">
                         <p className="text-indigo-600">Caisse</p>
-                        <p>{transactionTypes[formData.type as TransactionType].caisse === 'generale' ? 'Générale' : 'Scolaire'}</p>
+                        <p>{transactionTypes[formData.type as keyof typeof transactionTypes].caisse === 'generale' ? 'Générale' : 'Scolaire'}</p>
                       </div>
                     </div>
                   </div>
@@ -302,7 +462,7 @@ export function Finances({ userRole }: FinancesProps) {
                 <Button
                   onClick={handleAddTransaction}
                   className="flex-1 bg-indigo-600 hover:bg-indigo-700"
-                  disabled={!formData.type || !formData.amount || !formData.date || !formData.description}
+                  disabled={!formData.type || !formData.amount || !formData.date_transaction || !formData.description || !formData.mode_paiement}
                 >
                   Enregistrer la transaction
                 </Button>
@@ -312,6 +472,7 @@ export function Finances({ userRole }: FinancesProps) {
         </div>
       </div>
 
+      {/* Le reste du code reste identique pour les stats cards, graphiques, et tableau */}
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
@@ -560,63 +721,76 @@ export function Finances({ userRole }: FinancesProps) {
               <TableHeader>
                 <TableRow className="bg-slate-50">
                   <TableHead>Date</TableHead>
+                  <TableHead>Séance</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Membre</TableHead>
                   <TableHead>Caisse</TableHead>
                   <TableHead>Catégorie</TableHead>
                   <TableHead className="text-right">Montant</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTransactions.map((transaction) => (
-                  <TableRow key={transaction.id} className="hover:bg-slate-50">
-                    <TableCell>
-                      {new Date(transaction.date).toLocaleDateString('fr-FR', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </TableCell>
-                    <TableCell className="text-slate-900">
-                      {transactionTypes[transaction.type].label}
-                    </TableCell>
-                    <TableCell className="text-slate-600 max-w-xs truncate">
-                      {transaction.description}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          transaction.caisse === 'generale'
-                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                            : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                        }
-                      >
-                        {transaction.caisse === 'generale' ? 'Générale' : 'Scolaire'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          transaction.category === 'entree'
-                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                            : 'bg-red-100 text-red-700 hover:bg-red-200'
-                        }
-                      >
-                        {transaction.category === 'entree' ? 'Entrée' : 'Sortie'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span
-                        className={
-                          transaction.category === 'entree' ? 'text-emerald-600' : 'text-red-600'
-                        }
-                      >
-                        {transaction.category === 'entree' ? '+' : '-'}
-                        {transaction.amount.toFixed(2)}€
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredTransactions.map((transaction) => {
+                  const typeInfo = transactionTypes[transaction.type as keyof typeof transactionTypes];
+                  const seance = getSeanceDetails(transaction.seance_id);
+                  
+                  return (
+                    <TableRow key={transaction.$id} className="hover:bg-slate-50">
+                      <TableCell>
+                        {new Date(transaction.date_transaction).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </TableCell>
+                      <TableCell className="text-slate-600">
+                        {seance ? `${new Date(seance.date_seance).toLocaleDateString('fr-FR')} - ${seance.lieu_seance}` : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-slate-900">
+                        {typeInfo.label}
+                      </TableCell>
+                      <TableCell className="text-slate-600 max-w-xs truncate">
+                        {transaction.description}
+                      </TableCell>
+                      <TableCell className="text-slate-600">
+                        {transaction.membre_id ? getMembreName(transaction.membre_id) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            transaction.caisse === 'generale'
+                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                              : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          }
+                        >
+                          {transaction.caisse === 'generale' ? 'Générale' : 'Scolaire'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            typeInfo.category === 'entree'
+                              ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                              : 'bg-red-100 text-red-700 hover:bg-red-200'
+                          }
+                        >
+                          {typeInfo.category === 'entree' ? 'Entrée' : 'Sortie'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={
+                            typeInfo.category === 'entree' ? 'text-emerald-600' : 'text-red-600'
+                          }
+                        >
+                          {typeInfo.category === 'entree' ? '+' : '-'}
+                          {transaction.montant.toFixed(2)}€
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -626,10 +800,10 @@ export function Finances({ userRole }: FinancesProps) {
       {/* Info Card */}
       <Card className="border-indigo-200 bg-indigo-50">
         <CardContent className="p-6">
-          <h3 className="text-indigo-900 mb-4">Structure Financière</h3>
+          <h3 className="text-indigo-900 font-semibold mb-4">Structure Financière</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-indigo-800">
             <div className="space-y-2">
-              <p className="text-indigo-600">Caisse Générale :</p>
+              <p className="text-indigo-600 font-medium">Caisse Générale :</p>
               <ul className="space-y-1 ml-4">
                 <li>• Frais de maintenance des tontines</li>
                 <li>• Recouvrements des aides</li>
@@ -640,7 +814,7 @@ export function Finances({ userRole }: FinancesProps) {
               </ul>
             </div>
             <div className="space-y-2">
-              <p className="text-indigo-600">Caisse Scolaire :</p>
+              <p className="text-indigo-600 font-medium">Caisse Scolaire :</p>
               <ul className="space-y-1 ml-4">
                 <li>• Prêts scolaires (sorties)</li>
                 <li>• Intérêts des prêts (entrées)</li>
