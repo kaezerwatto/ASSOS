@@ -104,7 +104,7 @@ export function Loans({ userRole }: LoansProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-indigo-950 mb-2">Prêts Scolaires</h1>
+          <h1 className="text-slate-600 mb-2">Prêts Scolaires</h1>
           <p className="text-slate-600">{loans.length} prêts enregistrés</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>

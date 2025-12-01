@@ -1,16 +1,275 @@
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Users, Wallet, CalendarDays, TrendingUp, Heart, GraduationCap, Coins, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { databaseService } from '../lib/appwrite-service';
 
 interface DashboardProps {
   userRole: 'admin' | 'tresorier';
 }
 
+// IDs de la base de données Appwrite
+const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || '69243fec00044331ef75';
+const MEMBRES_COLLECTION = 'membres';
+const SEANCES_COLLECTION = 'seances';
+const ENTREES_COLLECTION = 'entrees';
+const SORTIES_COLLECTION = 'sorties';
+const EMPRUNTS_SCOLAIRES_COLLECTION = 'emprunt_scolaire';
+const ENTREES_SCOLAIRES_COLLECTION = 'entrees_scolaire';
+const TONTINES_COLLECTION = 'tontines';
+const SEANCES_TONTINES_COLLECTION = 'seances_tontines';
+
+interface Membre {
+  $id: string;
+  nom: string;
+  prenoms: string;
+  statut: 'actif(ve)' | 'suspendu(e)' | 'exclu(e)' | 'demissionnaire' | 'desactive(e)';
+  role: string;
+  $createdAt: string;
+}
+
+interface Seance {
+  $id: string;
+  date_seance: string;
+  lieu_seance: string;
+  type: 'inaugurale' | 'ordinaire' | 'extraordinaire';
+  $createdAt: string;
+}
+
+interface Entree {
+  $id: string;
+  montant: number;
+  $createdAt: string;
+}
+
+interface Sortie {
+  $id: string;
+  montant: number;
+  $createdAt: string;
+}
+
+interface EmpruntScolaire {
+  $id: string;
+  montant: number;
+  valeur_interet: number;
+  $createdAt: string;
+}
+
+interface EntreeScolaire {
+  $id: string;
+  montant: number;
+  $createdAt: string;
+}
+
+interface Tontine {
+  $id: string;
+  montant_individuel: number;
+  nombre_participants: number;
+  $createdAt: string;
+}
+
+interface SeanceTontine {
+  $id: string;
+  montant_percu: number;
+  $createdAt: string;
+}
+
 export function Dashboard({ userRole }: DashboardProps) {
-  const stats = [
+  const [stats, setStats] = useState({
+    membresActifs: 0,
+    caisseGenerale: 0,
+    caisseScolaire: 0,
+    prochaineSeance: 'Aucune séance planifiée',
+    tontinesTraitees: 0,
+    aidesAccordees: 0,
+    pretsScolaires: 0
+  });
+
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [categoryData, setCategoryData] = useState<any[]>([]);
+  const [attendanceData, setAttendanceData] = useState<any[]>([]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Charger les données depuis Appwrite
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Charger toutes les données en parallèle
+      const [
+        membresRes,
+        seancesRes,
+        entreesRes,
+        sortiesRes,
+        empruntsRes,
+        entreesScolairesRes,
+        tontinesRes,
+        seancesTontinesRes
+      ] = await Promise.all([
+        databaseService.listDocuments(DATABASE_ID, MEMBRES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, SEANCES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, ENTREES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, SORTIES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, EMPRUNTS_SCOLAIRES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, ENTREES_SCOLAIRES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, TONTINES_COLLECTION),
+        databaseService.listDocuments(DATABASE_ID, SEANCES_TONTINES_COLLECTION)
+      ]);
+
+      const membres = membresRes.documents as Membre[];
+      const seances = seancesRes.documents as Seance[];
+      const entrees = entreesRes.documents as Entree[];
+      const sorties = sortiesRes.documents as Sortie[];
+      const emprunts = empruntsRes.documents as EmpruntScolaire[];
+      const entreesScolaires = entreesScolairesRes.documents as EntreeScolaire[];
+      const tontines = tontinesRes.documents as Tontine[];
+      const seancesTontines = seancesTontinesRes.documents as SeanceTontine[];
+
+      // Calculer les statistiques
+      const membresActifs = membres.filter(m => m.statut === 'actif(ve)').length;
+      
+      const totalEntrees = entrees.reduce((sum, e) => sum + e.montant, 0);
+      const totalSorties = sorties.reduce((sum, s) => sum + s.montant, 0);
+      const caisseGenerale = totalEntrees - totalSorties;
+
+      const totalEntreesScolaires = entreesScolaires.reduce((sum, e) => sum + e.montant, 0);
+      const totalEmpruntsScolaires = emprunts.reduce((sum, e) => sum + e.montant, 0);
+      const caisseScolaire = totalEntreesScolaires - totalEmpruntsScolaires;
+
+      // Trouver la prochaine séance
+      const now = new Date();
+      const prochainesSeances = seances
+        .filter(s => new Date(s.date_seance) > now)
+        .sort((a, b) => new Date(a.date_seance).getTime() - new Date(b.date_seance).getTime());
+      
+      const prochaineSeance = prochainesSeances.length > 0 
+        ? `Dans ${Math.ceil((new Date(prochainesSeances[0].date_seance).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} jours`
+        : 'Aucune séance planifiée';
+
+      // Calculer les activités récentes
+      const activities = [
+        ...sorties.map(s => ({
+          type: 'Aide',
+          description: 'Aide accordée',
+          amount: `-${s.montant}€`,
+          date: new Date(s.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+        })),
+        ...seancesTontines.map(st => ({
+          type: 'Tontine',
+          description: 'Bénéficiaire tontine',
+          amount: `+${st.montant_percu}€`,
+          date: new Date(st.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+        })),
+        ...emprunts.map(e => ({
+          type: 'Prêt',
+          description: 'Prêt scolaire accordé',
+          amount: `-${e.montant}€`,
+          date: new Date(e.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+        })),
+        ...entrees.filter(e => !e.seance_id).map(e => ({
+          type: 'Don',
+          description: 'Don reçu',
+          amount: `+${e.montant}€`,
+          date: new Date(e.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+        }))
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+
+      // Générer les données mensuelles (6 derniers mois)
+      const monthlyFlowData = generateMonthlyData(entrees, sorties, entreesScolaires, emprunts);
+      
+      // Générer les données par catégorie
+      const categoryDistribution = generateCategoryData(entrees, sorties, tontines, emprunts);
+      
+      // Générer les données de présence (simulées pour l'exemple)
+      const attendanceRate = generateAttendanceData();
+
+      setStats({
+        membresActifs,
+        caisseGenerale,
+        caisseScolaire,
+        prochaineSeance,
+        tontinesTraitees: seancesTontines.length,
+        aidesAccordees: sorties.length,
+        pretsScolaires: emprunts.length
+      });
+
+      setMonthlyData(monthlyFlowData);
+      setCategoryData(categoryDistribution);
+      setAttendanceData(attendanceRate);
+      setRecentActivities(activities);
+      
+    } catch (error) {
+      console.error('Erreur lors du chargement des données du dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fonctions utilitaires pour générer les données
+  const generateMonthlyData = (entrees: Entree[], sorties: Sortie[], entreesScolaires: EntreeScolaire[], emprunts: EmpruntScolaire[]) => {
+    const months = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = date.toLocaleDateString('fr-FR', { month: 'short' });
+      
+      // Filtrer les données pour le mois donné (simplifié)
+      const monthEntrees = entrees.filter(e => 
+        new Date(e.$createdAt).getMonth() === date.getMonth() &&
+        new Date(e.$createdAt).getFullYear() === date.getFullYear()
+      ).reduce((sum, e) => sum + e.montant, 0);
+      
+      const monthSorties = sorties.filter(s => 
+        new Date(s.$createdAt).getMonth() === date.getMonth() &&
+        new Date(s.$createdAt).getFullYear() === date.getFullYear()
+      ).reduce((sum, s) => sum + s.montant, 0);
+
+      months.push({
+        month: monthKey,
+        entrees: monthEntrees,
+        sorties: monthSorties,
+        net: monthEntrees - monthSorties
+      });
+    }
+    
+    return months;
+  };
+
+  const generateCategoryData = (entrees: Entree[], sorties: Sortie[], tontines: Tontine[], emprunts: EmpruntScolaire[]) => {
+    const tontinesTotal = tontines.reduce((sum, t) => sum + (t.montant_individuel * t.nombre_participants), 0);
+    const aidesTotal = sorties.reduce((sum, s) => sum + s.montant, 0);
+    const pretsTotal = emprunts.reduce((sum, e) => sum + e.montant, 0);
+    const donsTotal = entrees.filter(e => !e.seance_id).reduce((sum, e) => sum + e.montant, 0);
+    const seancesTotal = entrees.filter(e => e.seance_id).reduce((sum, e) => sum + e.montant, 0);
+
+    return [
+      { name: 'Tontines', value: tontinesTotal, color: '#8b5cf6' },
+      { name: 'Aides', value: aidesTotal, color: '#ef4444' },
+      { name: 'Prêts', value: pretsTotal, color: '#f59e0b' },
+      { name: 'Dons', value: donsTotal, color: '#ec4899' },
+      { name: 'Séances', value: seancesTotal, color: '#06b6d4' },
+    ].filter(item => item.value > 0);
+  };
+
+  const generateAttendanceData = () => {
+    // Données simulées pour le taux de présence
+    const months = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin'];
+    return months.map(month => ({
+      month,
+      taux: Math.floor(Math.random() * 20) + 80 // Entre 80% et 100%
+    }));
+  };
+
+  const statsCards = [
     {
       title: 'Membres Actifs',
-      value: '48',
+      value: stats.membresActifs.toString(),
       icon: Users,
       color: 'bg-blue-500',
       change: '+3 ce mois',
@@ -18,7 +277,7 @@ export function Dashboard({ userRole }: DashboardProps) {
     },
     {
       title: 'Caisse Générale',
-      value: '12,450€',
+      value: `${stats.caisseGenerale.toFixed(0)}€`,
       icon: Wallet,
       color: 'bg-emerald-500',
       change: '+850€ ce mois',
@@ -26,7 +285,7 @@ export function Dashboard({ userRole }: DashboardProps) {
     },
     {
       title: 'Caisse Scolaire',
-      value: '8,200€',
+      value: `${stats.caisseScolaire.toFixed(0)}€`,
       icon: GraduationCap,
       color: 'bg-purple-500',
       change: '+400€ ce mois',
@@ -34,7 +293,7 @@ export function Dashboard({ userRole }: DashboardProps) {
     },
     {
       title: 'Prochaine Séance',
-      value: 'Dans 3 jours',
+      value: stats.prochaineSeance,
       icon: CalendarDays,
       color: 'bg-orange-500',
       change: 'Samedi 22 Nov',
@@ -42,51 +301,28 @@ export function Dashboard({ userRole }: DashboardProps) {
     },
   ];
 
-  const monthlyData = [
-    { month: 'Jan', entrees: 4200, sorties: 3100, net: 1100 },
-    { month: 'Fev', entrees: 5100, sorties: 3600, net: 1500 },
-    { month: 'Mar', entrees: 4800, sorties: 3900, net: 900 },
-    { month: 'Avr', entrees: 6200, sorties: 4200, net: 2000 },
-    { month: 'Mai', entrees: 5800, sorties: 3800, net: 2000 },
-    { month: 'Juin', entrees: 6500, sorties: 4100, net: 2400 },
-  ];
-
-  const categoryData = [
-    { name: 'Tontines', value: 3500, color: '#8b5cf6' },
-    { name: 'Aides', value: 1850, color: '#ef4444' },
-    { name: 'Prêts', value: 3200, color: '#f59e0b' },
-    { name: 'Dons', value: 1200, color: '#ec4899' },
-    { name: 'Séances', value: 2800, color: '#06b6d4' },
-  ];
-
-  const attendanceData = [
-    { month: 'Jan', taux: 85 },
-    { month: 'Fev', taux: 88 },
-    { month: 'Mar', taux: 82 },
-    { month: 'Avr', taux: 90 },
-    { month: 'Mai', taux: 87 },
-    { month: 'Juin', taux: 89 },
-  ];
-
-  const recentActivities = [
-    { type: 'Aide', description: 'Aide maladie - Marie Dupont', amount: '150€', date: '15 Nov 2025' },
-    { type: 'Tontine', description: 'Bénéficiaire - Jean Martin', amount: '500€', date: '15 Nov 2025' },
-    { type: 'Prêt', description: 'Prêt scolaire - Sophie Bernard', amount: '800€', date: '10 Nov 2025' },
-    { type: 'Don', description: 'Don anonyme', amount: '200€', date: '08 Nov 2025' },
-    { type: 'Séance', description: 'Entretien salle + repas', amount: '-125€', date: '01 Nov 2025' },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">Chargement des données...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-indigo-950 mb-2">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Tableau de bord</h1>
           <p className="text-slate-600">Vue d'ensemble de votre association</p>
         </div>
         <div className="text-right">
           <p className="text-sm text-slate-600">Rôle actuel</p>
-          <p className="text-indigo-600">
+          <p className="text-indigo-600 font-medium">
             {userRole === 'admin' ? 'Administrateur' : 'Trésorier'}
           </p>
         </div>
@@ -94,7 +330,7 @@ export function Dashboard({ userRole }: DashboardProps) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => {
+        {statsCards.map((stat) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
@@ -154,6 +390,7 @@ export function Dashboard({ userRole }: DashboardProps) {
                     borderRadius: '8px',
                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                   }}
+                  formatter={(value) => `${value}€`}
                 />
                 <Legend />
                 <Area type="monotone" dataKey="entrees" stroke="#10b981" fillOpacity={1} fill="url(#colorEntrees)" name="Entrées (€)" />
@@ -275,7 +512,7 @@ export function Dashboard({ userRole }: DashboardProps) {
       {/* Quick Stats */}
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-slate-900">Statistiques Mensuelles Détaillées</CardTitle>
+          <CardTitle className="text-slate-900">Statistiques Détaillées</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -285,11 +522,11 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Users className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Présences</p>
-                  <p className="text-xl text-slate-900">42/48</p>
+                  <p className="text-sm text-blue-900">Membres Actifs</p>
+                  <p className="text-xl text-blue-800">{stats.membresActifs}</p>
                 </div>
               </div>
-              <span className="text-sm text-blue-600">87.5%</span>
+              <span className="text-sm text-blue-600">100%</span>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg">
@@ -298,11 +535,11 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Coins className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Tontines traitées</p>
-                  <p className="text-xl text-slate-900">9</p>
+                  <p className="text-sm text-blue-900">Tontines traitées</p>
+                  <p className="text-xl text-blue-800">{stats.tontinesTraitees}</p>
                 </div>
               </div>
-              <span className="text-sm text-purple-600">3 séances</span>
+              <span className="text-sm text-purple-600">Actives</span>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-lg">
@@ -311,11 +548,11 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <Heart className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Aides accordées</p>
-                  <p className="text-xl text-slate-900">12</p>
+                  <p className="text-sm text-blue-900">Aides accordées</p>
+                  <p className="text-xl text-blue-800">{stats.aidesAccordees}</p>
                 </div>
               </div>
-              <span className="text-sm text-emerald-600">1,850€</span>
+              <span className="text-sm text-emerald-600">Ce mois</span>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg">
@@ -324,11 +561,11 @@ export function Dashboard({ userRole }: DashboardProps) {
                   <GraduationCap className="size-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Prêts scolaires</p>
-                  <p className="text-xl text-slate-900">5</p>
+                  <p className="text-sm text-blue-900">Prêts scolaires</p>
+                  <p className="text-xl text-blue-800">{stats.pretsScolaires}</p>
                 </div>
               </div>
-              <span className="text-sm text-orange-600">3,200€</span>
+              <span className="text-sm text-orange-600">En cours</span>
             </div>
           </div>
         </CardContent>

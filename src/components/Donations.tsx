@@ -79,7 +79,7 @@ export function Donations({ userRole }: DonationsProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-indigo-950 mb-2">Gestion des Dons</h1>
+          <h1 className="text-slate-600 mb-2">Gestion des Dons</h1>
           <p className="text-slate-600">{donations.length} dons enregistrés</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
